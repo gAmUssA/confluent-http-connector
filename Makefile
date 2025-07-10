@@ -97,3 +97,38 @@ dev-setup: ## 🛠️  Setup for development (creates scripts directory)
 	@mkdir -p scripts
 	@chmod +x scripts/*.sh 2>/dev/null || true
 	@echo "$(GREEN)✅ Development setup complete$(NC)"
+
+# Analytics targets
+start-trino: ## 🔍 Start Trino server via Docker with catalog config
+	@echo "$(BOLD)$(PURPLE)🔍 Starting Trino server...$(NC)"
+	@echo "$(YELLOW)📁 Using catalog config from: $(PWD)/catalog$(NC)"
+	@echo "$(YELLOW)🌐 Trino will be available at: http://localhost:8080$(NC)"
+	@docker run --rm --name trino \
+		-p 8080:8080 \
+		--volume $(PWD)/catalog:/etc/trino/catalog \
+		-d \
+		trinodb/trino:latest > /dev/null 2>&1
+	@echo "$(YELLOW)⏳ Checking Trino startup (non-blocking)...$(NC)"
+	@(timeout=30; \
+	while [ $$timeout -gt 0 ]; do \
+		if docker logs trino 2>&1 | grep -q "======== SERVER STARTED ========"; then \
+			echo "$(GREEN)✅ Trino server is ready!$(NC)"; \
+			echo "$(CYAN)🔗 Connect at: http://localhost:8080$(NC)"; \
+			echo "$(CYAN)📊 Use catalog: iceberg$(NC)"; \
+			exit 0; \
+		fi; \
+		sleep 2; \
+		timeout=$$((timeout-2)); \
+	done; \
+	echo "$(YELLOW)⚠️  Trino is starting in background (may take up to 60s)$(NC)"; \
+	echo "$(YELLOW)💡 Check status with: make trino-logs$(NC)") &
+	@echo "$(GREEN)🚀 Trino container started in background$(NC)"
+
+stop-trino: ## 🛑 Stop Trino server
+	@echo "$(BOLD)$(RED)🛑 Stopping Trino server...$(NC)"
+	@docker stop trino 2>/dev/null || echo "$(YELLOW)⚠️  Trino container not running$(NC)"
+	@echo "$(GREEN)✅ Trino stopped$(NC)"
+
+trino-logs: ## 📋 Show Trino server logs
+	@echo "$(BOLD)$(CYAN)📋 Trino server logs:$(NC)"
+	@docker logs trino 2>/dev/null || echo "$(RED)❌ Trino container not found$(NC)"

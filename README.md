@@ -1,6 +1,17 @@
-# 🌊 Confluent Cloud HTTP Source Connector Automation
+# 🌊 Confluent Cloud HTTP Source Connector Automation + Tableflow (feat. Trino)
 
-This project automates the complete setup and management of HTTP Source connectors on Confluent Cloud using Makefile and shell scripts. It's based on the excellent guide by [Robin Moffatt](https://rmoff.net/2025/03/13/creating-an-http-source-connector-on-confluent-cloud-from-the-cli/).
+![Confluent Cloud](https://img.shields.io/badge/Confluent%20Cloud-0066CC?style=for-the-badge&logo=apache-kafka&logoColor=white)
+![Apache Kafka](https://img.shields.io/badge/Apache%20Kafka-231F20?style=for-the-badge&logo=apache-kafka&logoColor=white)
+![Trino](https://img.shields.io/badge/Trino-DD00A1?style=for-the-badge&logo=trino&logoColor=white)
+![Apache Iceberg](https://img.shields.io/badge/Apache%20Iceberg-326CE5?style=for-the-badge&logo=apache&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![Shell Script](https://img.shields.io/badge/Shell%20Script-121011?style=for-the-badge&logo=gnu-bash&logoColor=white)
+![Make](https://img.shields.io/badge/Make-427819?style=for-the-badge&logo=cmake&logoColor=white)
+![HTTPie](https://img.shields.io/badge/HTTPie-73DC8C?style=for-the-badge&logo=http&logoColor=white)
+![JSON](https://img.shields.io/badge/JSON-000000?style=for-the-badge&logo=json&logoColor=white)
+
+This project automates the complete setup and management of HTTP Source connectors on Confluent Cloud using Makefile and shell scripts. It's based on the excellent guides by [Robin Moffatt](https://rmoff.net/).
+[\[1\]](https://rmoff.net/2025/03/13/creating-an-http-source-connector-on-confluent-cloud-from-the-cli/) [\[2\]](https://www.confluent.io/blog/building-streaming-data-pipelines-part-1/)
 
 ## 🚀 Features
 
@@ -8,9 +19,10 @@ This project automates the complete setup and management of HTTP Source connecto
 - **🏗️ Infrastructure Creation**: Environment and Kafka cluster setup
 - **🔌 Connector Management**: Create, monitor, and delete HTTP Source connectors
 - **📊 Data Inspection**: Check connector status and inspect Kafka topic data
+- **🔍 SQL Analytics**: Trino integration with Iceberg catalog for querying streaming data
 - **🧹 Resource Cleanup**: Complete teardown of all created resources
 - **🎨 User-Friendly Output**: Colorized output with emojis for better readability
-- **🛠️ Multiple Tool Support**: Works with HTTPie, cURL, kcat, and Confluent CLI
+- **🛠️ Multiple Tool Support**: Works with HTTPie, cURL, kcat, Confluent CLI, and Docker
 
 ## 📋 Prerequisites
 
@@ -19,6 +31,7 @@ This project automates the complete setup and management of HTTP Source connecto
 - **HTTPie** or **cURL**: For API requests
 - **jq**: For JSON parsing (recommended)
 - **kcat**: For Kafka topic inspection (recommended)
+- **Docker**: For Trino analytics server (optional)
 
 ### Installation Commands (macOS)
 ```bash
@@ -26,7 +39,7 @@ This project automates the complete setup and management of HTTP Source connecto
 curl -sL --http1.1 https://cnfl.io/cli | sh -s -- latest
 
 # Install optional tools
-brew install httpie jq kcat
+brew install httpie jq kcat docker
 ```
 
 ## 🏁 Quick Start
@@ -191,6 +204,173 @@ Edit the connector creation scripts to use different endpoints:
 # Modify topic prefix
 "kafka.topic": "your-custom-topic-name"
 ```
+
+## 🔍 Trino Analytics
+
+This project includes Trino integration for SQL-based analytics on your streaming data using Iceberg catalog and Confluent Cloud.
+
+### 🏗️ Setup
+
+1. **Configure Iceberg Catalog**:
+   Create `catalog/tableflow.properties` with your Confluent Cloud credentials:
+   ```properties
+   connector.name=iceberg
+   iceberg.catalog.type=rest
+   iceberg.rest-catalog.oauth2.credential=YOUR_API_KEY:YOUR_API_SECRET
+   iceberg.rest-catalog.security=OAUTH2
+   iceberg.rest-catalog.uri=https://tableflow.us-west-2.aws.confluent.cloud/iceberg/catalog/organizations/YOUR_ORG_ID/environments/YOUR_ENV_ID
+   iceberg.rest-catalog.vended-credentials-enabled=true
+   
+   fs.native-s3.enabled=true
+   s3.region=us-west-2
+   ```
+
+2. **Start Trino Server**:
+   ```bash
+   make start-trino    # Starts Trino in background
+   make trino-logs     # Monitor startup progress
+   ```
+
+3. **Access Trino**:
+   - **Web UI**: http://localhost:8080
+   - **CLI**: `docker exec -it trino trino`
+   - **JDBC**: `jdbc:trino://localhost:8080/tableflow`
+
+### 🚀 Usage
+
+#### Start/Stop Trino
+```bash
+make start-trino    # Start Trino server (non-blocking)
+make stop-trino     # Stop Trino server
+make trino-logs     # View server logs
+```
+
+#### Connect and Query
+```bash
+# Connect via Docker CLI
+docker exec -it trino trino --catalog tableflow
+
+# Or use any SQL client with JDBC:
+# jdbc:trino://localhost:8080/tableflow
+```
+
+### 📊 SQL Examples
+
+Once your HTTP connectors are running and data is flowing:
+
+#### List Available Schemas
+```sql
+SHOW SCHEMAS IN tableflow;
+```
+
+#### Explore Tables
+```sql
+-- List tables in your environment (replace lkc-xxxxx with your cluster ID)
+SHOW TABLES IN "tableflow"."lkc-xxxxx";
+
+-- Describe table structure
+DESCRIBE "tableflow"."lkc-xxxxx"."flood-monitoring-measures";
+DESCRIBE "tableflow"."lkc-xxxxx"."flood-monitoring-stations";
+DESCRIBE "tableflow"."lkc-xxxxx"."flood-monitoring-readings";
+```
+
+#### Query Streaming Data
+```sql
+-- Query recent flood monitoring readings (unnest the items array)
+SELECT 
+    u.measure,
+    u.value,
+    u.dateTime
+FROM "tableflow"."lkc-xxxxx"."flood-monitoring-readings" t
+CROSS JOIN UNNEST(t.items) AS u
+WHERE u.dateTime >= current_timestamp - INTERVAL '1' HOUR
+ORDER BY u.dateTime DESC
+LIMIT 100;
+```
+
+#### Analytical Queries
+```sql
+-- Denormalized view with readings, measures, and stations
+WITH readings AS (
+    SELECT u.*
+    FROM "tableflow"."lkc-xxxxx"."flood-monitoring-readings" t
+    CROSS JOIN UNNEST(t.items) AS u
+),
+measures AS (
+    SELECT DISTINCT u._40id, u.label, u.parameterName, u.unitName, u.station
+    FROM "tableflow"."lkc-xxxxx"."flood-monitoring-measures" t
+    CROSS JOIN UNNEST(t.items) AS u
+),
+stations AS (
+    SELECT DISTINCT u._40id, u.catchmentName, u.label as station_label, u.riverName
+    FROM "tableflow"."lkc-xxxxx"."flood-monitoring-stations" t
+    CROSS JOIN UNNEST(t.items) AS u
+)
+SELECT 
+    s.station_label,
+    s.riverName,
+    m.label as measure_label,
+    m.parameterName,
+    AVG(CAST(r.value AS DOUBLE)) as avg_value,
+    COUNT(*) as reading_count
+FROM readings r
+LEFT JOIN measures m ON r.measure = m._40id
+LEFT JOIN stations s ON m.station = s._40id
+WHERE r.dateTime >= current_date - INTERVAL '7' DAY
+GROUP BY s.station_label, s.riverName, m.label, m.parameterName
+ORDER BY avg_value DESC
+LIMIT 20;
+
+-- Time series analysis for a specific measure
+WITH readings AS (
+    SELECT u.*
+    FROM "tableflow"."lkc-xxxxx"."flood-monitoring-readings" t
+    CROSS JOIN UNNEST(t.items) AS u
+)
+SELECT 
+    date_trunc('hour', r.dateTime) as hour,
+    AVG(CAST(r.value AS DOUBLE)) as avg_value,
+    MIN(CAST(r.value AS DOUBLE)) as min_value,
+    MAX(CAST(r.value AS DOUBLE)) as max_value,
+    COUNT(*) as reading_count
+FROM readings r
+WHERE r.measure = 'http://environment.data.gov.uk/flood-monitoring/id/measures/YOUR-MEASURE-ID'
+    AND r.dateTime >= current_date - INTERVAL '1' DAY
+GROUP BY date_trunc('hour', r.dateTime)
+ORDER BY hour;
+```
+
+### 🔧 Configuration
+
+#### Custom Catalog Properties
+Modify `catalog/tableflow.properties` to:
+- Change regions or cloud providers
+- Add authentication credentials
+- Configure S3 settings
+- Enable additional features
+
+#### Docker Configuration
+The Trino container:
+- **Port**: 8080 (configurable in Makefile)
+- **Catalog Mount**: `./catalog:/etc/trino/catalog`
+- **Image**: `trinodb/trino:latest`
+- **Mode**: Detached with background readiness check
+
+### 🎯 Integration Benefits
+
+- **Real-time Analytics**: Query streaming data as it arrives
+- **SQL Interface**: Use familiar SQL syntax on streaming data
+- **Scalable**: Trino handles large datasets efficiently
+- **Iceberg Format**: ACID transactions and schema evolution
+- **Cloud Native**: Integrates seamlessly with Confluent Cloud
+
+### 💡 Tips
+
+1. **Monitor Data Flow**: Use `make check-data` to verify data is flowing before querying
+2. **Check Connector Status**: Use `make status` to ensure connectors are healthy
+3. **Schema Discovery**: Tables appear automatically as connectors create topics
+4. **Performance**: Use appropriate WHERE clauses for time-based filtering
+5. **Debugging**: Use `make trino-logs` to troubleshoot connection issues
 
 ## 🧹 Cleanup
 

@@ -1,0 +1,11 @@
+connector.name=iceberg
+iceberg.catalog.type=rest
+iceberg.rest-catalog.oauth2.credential=KEY:SECRET
+iceberg.rest-catalog.security=OAUTH2
+iceberg.rest-catalog.uri=tableflow_catalog_url
+iceberg.rest-catalog.vended-credentials-enabled=true
+
+fs.native-s3.enabled=true
+s3.region=s3_region
+
+iceberg.security=read_only
